@@ -28,6 +28,13 @@ nextPage.addEventListener('click', function() {
   resMobile.disabled = false
 })
 
+userAadhaar.addEventListener("input", function () {
+  this.value = this.value.replace(/[^0-9]/g, "")
+})
+resMobile.addEventListener("input", function () {
+  this.value = this.value.replace(/[^0-9]/g, "")
+})
+
 //Function
 function stepOne(){
   msgLabel.innerText = ""
@@ -78,6 +85,7 @@ function stepTwo(){
         // shareCode.type = "text"
         userAadhaar.disabled = true
         resMobile.disabled = true
+        maintainLogs("Authenticating for Status Checking")
       }
       else{
         msgLabel.innerText = "Invalid Captcha"
@@ -115,9 +123,11 @@ function stepThree(){
         nextPage.type = "submit"
         msgLabel.innerText = "OTP validated Successfully, Click Next to Continue"
         msgLabel.style.color = "green"
+        maintainLogs("Authentication for Status Checking Success")
       }
       else{
         msgLabel.innerText = "Invalid OTP"
+        maintainLogs("Authentication for Status Checking Failed")
       }
     }
   }
@@ -127,7 +137,7 @@ function stepThree(){
     "mobile" : resMobile.value,
     "otp": textOTP.value,
     "otpTxnId": steptworesponse.txnId,
-    
+
   }
 
   console.log(data)
@@ -137,6 +147,31 @@ function stepThree(){
 
 
 stepOne()
+
+function maintainLogs(message){
+
+  let xhr = new XMLHttpRequest()
+
+  xhr.open('POST', '/logs/', true)
+
+  xhr.setRequestHeader('X-CSRFToken', getCookie("csrftoken"))
+  xhr.setRequestHeader("Content-Type", "application/json")
+
+  xhr.onload = function(){
+    if (this.status == 200){
+      console.log(this.response)
+    }
+  }
+
+  data = {
+    "transactionId" : steptworesponse.txnId ,
+    "message" : message
+  }
+  console.log(data)
+
+  xhr.send(JSON.stringify(data))
+
+}
 
 
 function getCookie(name) {

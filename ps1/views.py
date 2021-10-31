@@ -9,10 +9,10 @@ from .files import smsapi
 from xml.dom import minidom
 import xml.etree.ElementTree as et
 from lxml import etree
-import bcrypt
-
-
+import datetime
+import os
 # Create your views here.
+
 
 resident_aadhaar_no=""
 resident_mobile_no=""
@@ -36,20 +36,18 @@ def handleResident(request):
 
 def handleLandlordCredentials(request):
     if request.method == 'POST':
-        # landlord_aadhaar_no = request.POST.get('llAadhaar')
+        landlord_aadhaar_no = request.POST.get('llAadhaar')
         llMobile = request.POST.get('llMobile')
-        # if(llMobile==resident_mobile_no):
-        #     return HttpResponse("Please Enter Landlord's Mobile No. here")
-        # else:
-        lmobile=llMobile.encode('utf-8')
-        landmobile=bcrypt.hashpw(lmobile,bcrypt.gensalt(rounds=0))
-        landlord = Landlord(llMobile=landmobile)
-        landlord.save()
-        print(resident_mobile_no,type(resident_mobile_no))
-        resident = Resident(resident_aadhaar=resident_aadhaar_no, llMobile=landlord, resMobile=resident_mobile_no)
-        resident.save()
-        msg=f"Your Resident with Aadhaar no. {resident.resident_aadhaar} has requested to Borrow your address.Click the below link to give the Consent or you can visit our site xyz.com.  Link https://localhost:8000/landlord"
-        # smsapi.sendSms(msg,landlord.llMobile)
+        if(llMobile==resident_mobile_no):
+            return render(request, 'unsuccess.html',{'data':"The Resident Mobile Number can't be same as Landlord's Mobile Number"})
+        else:
+            landlord = Landlord(llMobile=llMobile)
+            landlord.save()
+            print(resident_mobile_no,type(resident_mobile_no))
+            resident = Resident(resident_aadhaar=resident_aadhaar_no, llMobile=landlord, resMobile=resident_mobile_no)
+            resident.save()
+            msg=f"Your Resident with Mobile no. {resident.resMobile} has requested to Borrow your address.Click the below link to give the Consent or you can visit our site xyz.com.  Link https://localhost:8000/landlord"
+            smsapi.sendSms(msg,landlord.llMobile)
         return render(request, 'success.html',{'data':'Success-Your Request has been Successfully Sent'})
     else:
         return render(request, '404.html')
@@ -60,15 +58,11 @@ def getLandlord(request):
 def handleLandlordLogin(request):
     if request.method == 'POST':
         llMobile = request.POST['llMobile']
-        hash=bcrypt.hashpw(llMobile.encode('utf-8'),bcrypt.gensalt(rounds=0))
-        if bcrypt.checkpw(llMobile.encode('utf-8'),hash):
-            print('password matched')
-            print(hash)
-            print(llMobile)
+        print(llMobile)
         llAadhaar = request.POST['llAadhaar']
-        isPresent=Landlord.objects.filter(llMobile=hash).first()
+        isPresent=Landlord.objects.filter(llMobile=llMobile).first()
         if(isPresent is None):
-            return HttpResponse("No One has requested to borrow your address")
+            return render(request, 'unsuccess.html',{'data':"No One has requested to borrow your address"})
         else:
             residents=Resident.objects.filter(llMobile=llMobile)
             return render(request, 'consent.html',{'data':residents,'llMobile': llMobile, 'llAadhaar': llAadhaar})
@@ -78,13 +72,13 @@ def handleLandlordLogin(request):
 def rejectedRequest(request):
     if request.method == 'POST':
         resident_aadhaar_no = request.POST['resident_aadhaar']
-        # landlord_aadhaar_no = request.POST['llMobile']
+        landlord_aadhaar_no = request.POST['llMobile']
         #Consent Status Update
         residents=Resident.objects.filter(resident_aadhaar=resident_aadhaar_no).first()
         if(residents.consent_status is None):
             residents.consent_status=False
             residents.save()
-            return render(request, 'success.html',{'data':"Your Consent of Flase has been registered"})
+            return render(request, 'success.html',{'data':"Your Consent of rejection has been registered"})
     else:
         return render(request, '404.html')
 
@@ -111,8 +105,8 @@ def ekycSuccess(request):
         residents=Resident.objects.filter(resident_aadhaar=resident_aadhaar_no).first()
         residents.consent_status=True
         residents.save()
-        msg=f"Your Landlord has successfully granted his consent for using his adress.Click the below link to Update your address or you can visit our site xyz.com.  Link https://localhost:8000/status"
-        # smsapi.sendSms(msg,residents.resMobile)
+        msg=f"Your Landlord has successfully granted his consent for using his address.Your Passcode to update address is {share_code}.Click the below link to Update your addres Link https://localhost:8000/status"
+        smsapi.sendSms(msg,residents.resMobile)
         return render(request, 'success.html',{'data':"Offline eKYC Successful"})
     else:
         return render(request, '404.html')
@@ -124,39 +118,41 @@ def handleStatus(request):
     if request.method == 'POST':
         resident_aadhaar_no = request.POST['resAadhaar']
         residents=Resident.objects.filter(resident_aadhaar=resident_aadhaar_no).first()
-        print(residents.consent_status)
         return render(request, 'status_check.html',{'resident':residents})
     else:
         return render(request, '404.html')
 
 def updateAddress(request):
     print(request.POST)
-    # resAadhaar = '999996438044'
     if request.POST.get('updateAddress', None):
         resAadhaar = request.POST.get('resident_aadhaar')
         r = Resident.objects.filter(resident_aadhaar=int(resAadhaar)).first()
-        r.careof = request.POST.get('careof')
-        r.country = request.POST.get('country')
-        r.dist = request.POST.get('dist')
-        r.house = request.POST.get('house')
-        r.landmark = request.POST.get('landmark')
-        r.loc= request.POST.get('loc')
-        r.pc = request.POST.get('pc')
-        r.po = request.POST.get('po')
-        r.state = request.POST.get('state')
-        r.street = request.POST.get('street')
-        r.subdist= request.POST.get('subdist')
-        r.vtc= request.POST.get('vtc')
         lat = float(request.POST.get('lat'))
         long = float(request.POST.get('long'))
-        if validateLocation(r.country, r.state, lat, long):
+        country = request.POST.get('country')
+        state = request.POST.get('state')
+        if validateLocation(country, state, lat, long):
+            print('True', 'validated')
             r.request_flag=True
+            r.careof = request.POST.get('careof')
+            r.country = request.POST.get('country')
+            r.dist = request.POST.get('dist')
+            r.house = request.POST.get('house')
+            r.landmark = request.POST.get('landmark')
+            r.loc= request.POST.get('loc')
+            r.pc = request.POST.get('pc')
+            r.po = request.POST.get('po')
+            r.state = request.POST.get('state')
+            r.street = request.POST.get('street')
+            r.subdist= request.POST.get('subdist')
+            r.vtc= request.POST.get('vtc')
             r.save()
-            return render(request, 'success.html',{'data':"Congratulations,Your Address has been updated successfully"})
+            return render(request, 'success.html',{'data':"Congratulations, Your Address has been sent to UIDAI for further verification"})
         else:
+            print('false', 'not validated')
             r.request_flag=False
             r.save()
-            return HttpResponse('Invalid Address, Request Rejected')
+            return render(request, 'unsuccess.html',{'data':"Invalid Address, Request Rejected"})
     elif request.POST.get('submitCode', None):
         resAadhaar = request.POST.get('resident_aadhaar')
         shareCode = request.POST.get('shareCode')
@@ -191,7 +187,16 @@ def updateAddress(request):
         return render(request, '404.html')
 
 
-
+def maintainLogs(request):
+    body = json.loads(request.body)
+    transactionId = body['transactionId']
+    message = body['message']
+    file = open('ps1/logs/audit.log', 'a')
+    now = datetime.datetime.now()
+    now = str(now)[:-7]
+    file.write(f"{now} - {transactionId}: {message} \n")
+    file.close()
+    return HttpResponse(json.dumps({'status': 'success'}))
 
 def saveZip(request):
     body = json.loads(request.body)
@@ -239,6 +244,8 @@ def saveZip(request):
     x.vtc = vtc
     x.passcode = int(shareCode)
     x.save()
+    if os.path.exists(f'ps1/ekyc/{filename}'):
+        os.remove(f'ps1/ekyc/{filename}')
     return HttpResponse(json.dumps({'status': 'success'}))
 
 
@@ -249,14 +256,19 @@ def validateLocation(country, state, lat, long):
     link = f'https://nominatim.openstreetmap.org/reverse?format=json&lat={lat}&lon={long}&zoom=18&addressdetails=1'
     response = requests.get(link, headers=header)
     loc = json.loads(response.text)
+    print(loc)
     address = loc['address']
+    print(country)
+    print(address['country'])
+    print(state)
+    print(address['state'])
     if country == address['country'] and state == address['state']:
+        print('returned true')
         return True
     return False
 
 # for AJAX
 def getapi(request, apiLink):
-
     ct = request.content_type
 
     header = {
